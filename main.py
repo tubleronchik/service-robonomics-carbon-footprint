@@ -83,14 +83,19 @@ class FootprintService:
         logger.info(last_devices_data)
         used_power = self.data_parser(last_devices_data)
 
-    def data_parser(self, data) -> float:
+    def data_parser(self, data: tp.List[tp.Tuple[int, str]]) -> float:
         power_usage = 0
         for device in data:
             device_info = ast.literal_eval(device[1])
             if device_info["geo"] not in coefficients:
                 power_usage += float(device_info["power_usage"]) * COEFFICIENT
         logger.info(power_usage)
-        return power_usage
+        co2_tons = self.convert_to_CO2tons(power_usage)
+        return co2_tons
+
+    def convert_to_CO2tons(self, power: float) -> float:
+        co2_tons = power / (10 ** 6)
+        return co2_tons
 
 
 if __name__ == "__main__":
