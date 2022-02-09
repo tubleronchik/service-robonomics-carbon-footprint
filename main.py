@@ -23,7 +23,7 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
-TWIN_ID = 2
+TWIN_ID = 3
 COEFFICIENT = 0.7  # default coefficient if no geo set
 
 
@@ -88,19 +88,21 @@ class FootprintService:
         return co2_tons
 
     def convert_to_CO2tons(self, power: float) -> float:
-        print(power)
         co2_tons = power / (10 ** 6)
         return co2_tons
 
     def calculating_burning_tons(self, co2_tons: float) -> None:
         total_burned = 0
-        last_datalog = self.interface.fetch_datalog(self.interface.define_address())[1]
-        if last_datalog.startswith("burned"):
-            total_burned = int(last_datalog.split(": ")[1])
+        last_datalog = self.interface.fetch_datalog(self.interface.define_address())
+        if last_datalog is not None:
+            last_datalog = last_datalog[1]
+            if last_datalog.startswith("burned"):
+                total_burned = int(last_datalog.split(": ")[1])
         not_burned = co2_tons - total_burned
         logger.info(f"Total not burned: {not_burned} tons")
-        if not_burned > 1:
-            self.burning_tokens(1)
+        tons = int(not_burned)
+        if tons > 0:
+            self.burning_tokens(tons)
             logger.info(
                 f"Recording total burned tons to datalog.. Total CO2 tons: {total_burned + 1}."
             )
@@ -171,7 +173,8 @@ class FootprintService:
             for device in twins_list:
                 address = device[1]
                 data = self.interface.fetch_datalog(address)
-                last_devices_data.append(data)
+                if data is not None:
+                    last_devices_data.append(data)
         logger.info(f"Last data from all devices: {last_devices_data}")
         co2_tons = self.data_parser(last_devices_data)
         self.calculating_burning_tons(co2_tons)
