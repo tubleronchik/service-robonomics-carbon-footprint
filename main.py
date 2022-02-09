@@ -92,7 +92,7 @@ class FootprintService:
         co2_tons = power / (10 ** 6)
         return co2_tons
 
-    def calculating_burning_tons(self, co2_tons: float) -> float:
+    def calculating_burning_tons(self, co2_tons: float) -> None:
         total_burned = 0
         last_datalog = self.interface.fetch_datalog(self.interface.define_address())[1]
         if last_datalog.startswith("burned"):
@@ -135,12 +135,7 @@ class FootprintService:
         )
         return interface
 
-    def burn_call(
-        self,
-        substrate: SubstrateInterface,
-        co2_tonns: float,
-    ) -> tp.Any:
-
+    def burn_call(self, substrate: SubstrateInterface, co2_tonns: float) -> tp.Any:
         call = substrate.compose_call(
             call_module="Assets",
             call_function="burn",
@@ -153,7 +148,7 @@ class FootprintService:
 
         return call
 
-    def burning_tokens(self, co2_tonns: int):
+    def burning_tokens(self, co2_tonns: int) -> None:
         substrate = self.statemine_connect()
         extrinsic = substrate.create_signed_extrinsic(
             call=self.burn_call(substrate, co2_tonns), keypair=self.statemine_keypair
@@ -185,5 +180,3 @@ class FootprintService:
 if __name__ == "__main__":
     m = FootprintService()
     threading.Thread(target=m.get_last_data).start()
-
-
