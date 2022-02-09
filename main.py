@@ -91,12 +91,20 @@ class FootprintService:
         print(power)
         co2_tons = power / (10 ** 6)
         return co2_tons
-    
-    def calculating_burning_tons(self, co2_tons: float) -> float:
-        total_burned = self.interface.fetch_datalog(self.interface.define_address())
-        to_burn = co2_tons - total_burned
-        return to_burn
 
+    def calculating_burning_tons(self, co2_tons: float) -> float:
+        total_burned = 0
+        last_datalog = self.interface.fetch_datalog(self.interface.define_address())[1]
+        if last_datalog.startswith("burned"):
+            total_burned = int(last_datalog.split(": ")[1])
+        not_burned = co2_tons - total_burned
+        logger.info(f"Total not burned: {not_burned} tons")
+        if not_burned > 1:
+            self.burning_tokens(1)
+            logger.info(
+                f"Recording total burned tons to datalog.. Total CO2 tons: {total_burned + 1}."
+            )
+            self.interface.record_datalog(f"burned: {total_burned + 1}")
 
     def statemine_connect(self) -> SubstrateInterface:
         interface = SubstrateInterface(
@@ -145,7 +153,7 @@ class FootprintService:
 
         return call
 
-    def burning_tokens(self, co2_tonns: float):
+    def burning_tokens(self, co2_tonns: int):
         substrate = self.statemine_connect()
         extrinsic = substrate.create_signed_extrinsic(
             call=self.burn_call(substrate, co2_tonns), keypair=self.statemine_keypair
@@ -171,15 +179,11 @@ class FootprintService:
                 last_devices_data.append(data)
         logger.info(f"Last data from all devices: {last_devices_data}")
         co2_tons = self.data_parser(last_devices_data)
-        to_burn = self.calculating_burning_tons(co2_tons)
-        logger.info(f"To burn {to_burn} tons")
-        self.burning_tokens(co2_tons)
-        logger.info(f"Recording total data to datalog.. Total CO2 tons: {co2_tons}.")
-        self.interface.record_datalog(str(co2_tons))
+        self.calculating_burning_tons(co2_tons)
 
 
 if __name__ == "__main__":
     m = FootprintService()
-    threading.Thread(target=m.get_last_data).start()
-    m.get_last_data()
-
+    # threading.Thread(target=m.get_last_data).start()
+    # m.get_last_data()
+    m.calculating_burning_tons(10)
