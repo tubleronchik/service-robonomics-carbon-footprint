@@ -184,6 +184,6 @@ class FootprintService:
 
 if __name__ == "__main__":
     m = FootprintService()
-    # threading.Thread(target=m.get_last_data).start()
-    # m.get_last_data()
-    m.calculating_burning_tons(10)
+    threading.Thread(target=m.get_last_data).start()
+
+
