@@ -1,6 +1,10 @@
 robonomics:
-  robonomics_seed:
+  seed:
 statemine:
-  statemine_seed:
+  seed:
+  endpoint:
+  token_id:
+  ss58_format:
+
 service:
-  service_interval:
+  interval:
