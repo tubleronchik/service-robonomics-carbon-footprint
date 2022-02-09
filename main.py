@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from random import seed
 import typing as tp
 import robonomicsinterface as RI
 import yaml
@@ -8,6 +9,8 @@ import sys
 import os
 import threading
 import ast
+from substrateinterface import SubstrateInterface, Keypair
+from substrateinterface.exceptions import SubstrateRequestException
 
 from utils.coefficients import coefficients
 
@@ -30,8 +33,10 @@ class FootprintService:
             f"{os.path.realpath(__file__)[:-len(__file__)]}config/config.yaml"
         ) as f:
             self.config = yaml.safe_load(f)
-        self.interface = RI.RobonomicsInterface(
-            self.config["robonomics"]["robonomics_seed"]
+        self.interface = RI.RobonomicsInterface(self.config["robonomics"]["seed"])
+        self.statemine_keypair = Keypair.create_from_mnemonic(
+            self.config["statemine"]["seed"],
+            ss58_format=self.config["statemine"]["ss58_format"],
         )
         threading.Thread(target=self.launch_listener, name="LaunchListener").start()
 
@@ -55,7 +60,7 @@ class FootprintService:
             logger.info(f"Created topic with extrinsic hash: {hash}")
 
     def launch_listener(self) -> None:
-        interface = RI.RobonomicsInterface(self.config["robonomics"]["robonomics_seed"])
+        interface = RI.RobonomicsInterface(self.config["robonomics"]["seed"])
         subscriber = RI.Subscriber(
             interface, RI.SubEvent.NewLaunch, self.on_launch, interface.define_address()
         )
@@ -69,10 +74,94 @@ class FootprintService:
         twins_list = twin.value
         return twins_list
 
+    def data_parser(self, data: tp.List[tp.Tuple[int, str]]) -> float:
+        power_usage = 0
+        for device in data:
+            device_info = ast.literal_eval(device[1])
+            if device_info["geo"] not in coefficients:
+                power_usage += float(device_info["power_usage"]) * COEFFICIENT
+            else:
+                power_usage += (
+                    float(device_info["power_usage"]) * coefficients[device_info["geo"]]
+                )
+        co2_tons = self.convert_to_CO2tons(power_usage)
+        return co2_tons
+
+    def convert_to_CO2tons(self, power: float) -> float:
+        print(power)
+        co2_tons = power / (10 ** 6)
+        return co2_tons
+    
+    def calculating_burning_tons(self, co2_tons: float) -> float:
+        total_burned = self.interface.fetch_datalog(self.interface.define_address())
+        to_burn = co2_tons - total_burned
+        return to_burn
+
+
+    def statemine_connect(self) -> SubstrateInterface:
+        interface = SubstrateInterface(
+            url=self.config["statemine"]["endpoint"],
+            ss58_format=self.config["statemine"]["ss58_format"],
+            type_registry_preset="substrate-node-template",
+            type_registry={
+                "types": {
+                    "Record": "Vec<u8>",
+                    "Parameter": "Bool",
+                    "<T as frame_system::Config>::AccountId": "AccountId",
+                    "RingBufferItem": {
+                        "type": "struct",
+                        "type_mapping": [
+                            ["timestamp", "Compact<u64>"],
+                            ["payload", "Vec<u8>"],
+                        ],
+                    },
+                    "RingBufferIndex": {
+                        "type": "struct",
+                        "type_mapping": [
+                            ["start", "Compact<u64>"],
+                            ["end", "Compact<u64>"],
+                        ],
+                    },
+                }
+            },
+        )
+        return interface
+
+    def burn_call(
+        self,
+        substrate: SubstrateInterface,
+        co2_tonns: float,
+    ) -> tp.Any:
+
+        call = substrate.compose_call(
+            call_module="Assets",
+            call_function="burn",
+            call_params={
+                "id": self.config["statemine"]["token_id"],
+                "who": {"Id": self.statemine_keypair.ss58_address},
+                "amount": str(co2_tonns),
+            },
+        )
+
+        return call
+
+    def burning_tokens(self, co2_tonns: float):
+        substrate = self.statemine_connect()
+        extrinsic = substrate.create_signed_extrinsic(
+            call=self.burn_call(substrate, co2_tonns), keypair=self.statemine_keypair
+        )
+        try:
+            receipt = substrate.submit_extrinsic(extrinsic, wait_for_inclusion=True)
+            logger.info(
+                f"{co2_tonns} tokens was successfully burned in block {receipt.block_hash}"
+            )
+        except SubstrateRequestException as e:
+            logger.warning(
+                f"Something went wrong during extrinsic submission to Statemine: {e}"
+            )
+
     def get_last_data(self) -> None:
-        threading.Timer(
-            self.config["service"]["service_interval"], self.get_last_data
-        ).start()
+        threading.Timer(self.config["service"]["interval"], self.get_last_data).start()
         twins_list = self.get_twins_list()
         last_devices_data = []
         if twins_list is not None:
@@ -82,22 +171,15 @@ class FootprintService:
                 last_devices_data.append(data)
         logger.info(f"Last data from all devices: {last_devices_data}")
         co2_tons = self.data_parser(last_devices_data)
-        logger.info(f"Total CO2 tons: {co2}")
-
-    def data_parser(self, data: tp.List[tp.Tuple[int, str]]) -> float:
-        power_usage = 0
-        for device in data:
-            device_info = ast.literal_eval(device[1])
-            if device_info["geo"] not in coefficients:
-                power_usage += float(device_info["power_usage"]) * COEFFICIENT
-        co2_tons = self.convert_to_CO2tons(power_usage)
-        return co2_tons
-
-    def convert_to_CO2tons(self, power: float) -> float:
-        co2_tons = power / (10 ** 6)
-        return co2_tons
+        to_burn = self.calculating_burning_tons(co2_tons)
+        logger.info(f"To burn {to_burn} tons")
+        self.burning_tokens(co2_tons)
+        logger.info(f"Recording total data to datalog.. Total CO2 tons: {co2_tons}.")
+        self.interface.record_datalog(str(co2_tons))
 
 
 if __name__ == "__main__":
     m = FootprintService()
     threading.Thread(target=m.get_last_data).start()
+    m.get_last_data()
+
