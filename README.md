@@ -34,7 +34,8 @@ Coefficients for non-renewable energy have been taken from [Eurostat](https://ec
 ## Launch
 
 ```
-docker build --tag service-robonomics-carbon-footprint . 
-docker run -t service-robonomics-carbon-footprint    
+docker-compose up
 ```
+
+> `docker-compose up` doesn't rebuild the container. If you change something, use `docker-compose up --build` to rebuild the container image. 
 

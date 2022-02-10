@@ -1,2 +1,3 @@
-config/config.yaml
+config/
+!config/config_template.yaml
 utils/__pycache__
