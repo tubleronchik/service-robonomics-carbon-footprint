@@ -102,11 +102,11 @@ class FootprintService:
         logger.info(f"Total not burned: {not_burned} tons")
         tons = int(not_burned)
         if tons > 0:
-            self.burning_tokens(tons)
-            logger.info(
-                f"Recording total burned tons to datalog.. Total CO2 tons: {total_burned + 1}."
-            )
-            self.interface.record_datalog(f"burned: {total_burned + 1}")
+            if self.burning_tokens(tons):
+                logger.info(
+                    f"Recording total burned tons to datalog.. Total CO2 tons: {total_burned + tons}."
+                )
+                self.interface.record_datalog(f"burned: {total_burned + tons}")
 
     def statemine_connect(self) -> SubstrateInterface:
         interface = SubstrateInterface(
@@ -160,10 +160,12 @@ class FootprintService:
             logger.info(
                 f"{co2_tonns} tokens was successfully burned in block {receipt.block_hash}"
             )
+            return True
         except SubstrateRequestException as e:
             logger.warning(
                 f"Something went wrong during extrinsic submission to Statemine: {e}"
             )
+            return False
 
     def get_last_data(self) -> None:
         threading.Timer(self.config["service"]["interval"], self.get_last_data).start()
