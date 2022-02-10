@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from cmath import log
 from random import seed
 import typing as tp
 import robonomicsinterface as RI
@@ -11,6 +12,7 @@ import threading
 import ast
 from substrateinterface import SubstrateInterface, Keypair
 from substrateinterface.exceptions import SubstrateRequestException
+import time
 
 from utils.coefficients import coefficients
 
@@ -23,15 +25,13 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
-TWIN_ID = 3
+TWIN_ID = 5
 COEFFICIENT = 0.7  # default coefficient if no geo set
 
 
 class FootprintService:
     def __init__(self) -> None:
-        with open(
-            f"{os.path.realpath(__file__)[:-len(__file__)]}config/config.yaml"
-        ) as f:
+        with open("./config/config.yaml") as f:
             self.config = yaml.safe_load(f)
         self.interface = RI.RobonomicsInterface(self.config["robonomics"]["seed"])
         self.statemine_keypair = Keypair.create_from_mnemonic(
@@ -92,21 +92,33 @@ class FootprintService:
         return co2_tons
 
     def calculating_burning_tons(self, co2_tons: float) -> None:
-        total_burned = 0
-        last_datalog = self.interface.fetch_datalog(self.interface.define_address())
-        if last_datalog is not None:
-            last_datalog = last_datalog[1]
-            if last_datalog.startswith("burned"):
-                total_burned = int(last_datalog.split(": ")[1])
+        total_burned = self.synchronize_burned()
         not_burned = co2_tons - total_burned
         logger.info(f"Total not burned: {not_burned} tons")
         tons = int(not_burned)
         if tons > 0:
+            with open("./config/burned", "w") as f:
+                f.write(f"{time.time()}: {tons}")
             if self.burning_tokens(tons):
                 logger.info(
                     f"Recording total burned tons to datalog.. Total CO2 tons: {total_burned + tons}."
                 )
                 self.interface.record_datalog(f"burned: {total_burned + tons}")
+
+    def synchronize_burned(self) -> int:
+        try:
+            with open("./config/burned") as f:
+                burned_real = f.readline().split(": ")[1]
+        except FileNotFoundError:
+            burned_real = 0
+        last_datalog = self.interface.fetch_datalog(self.interface.define_address())
+        if last_datalog is not None:
+            last_datalog = last_datalog[1]
+            if last_datalog.startswith("burned"):
+                burned_recorded = int(last_datalog.split(": ")[1])
+        else:
+            burned_recorded = 0
+        return max(int(burned_real), burned_recorded)
 
     def statemine_connect(self) -> SubstrateInterface:
         interface = SubstrateInterface(
@@ -185,3 +197,4 @@ class FootprintService:
 if __name__ == "__main__":
     m = FootprintService()
     threading.Thread(target=m.get_last_data).start()
+    
