@@ -98,7 +98,7 @@ class FootprintService:
         tons = int(not_burned)
         if tons > 0:
             with open("./config/burned", "w") as f:
-                f.write(f"{time.time()}: {tons}")
+                f.write(f"{time.time()}: {total_burned + tons}")
             if self.burning_tokens(tons):
                 logger.info(
                     f"Recording total burned tons to datalog.. Total CO2 tons: {total_burned + tons}."
