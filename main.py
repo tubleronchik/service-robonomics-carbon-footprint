@@ -26,7 +26,7 @@ logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
 TWIN_ID = 5
-COEFFICIENT = 0.7  # default coefficient if no geo set
+COEFFICIENT = 0.475  # default coefficient if no geo set
 
 
 class FootprintService:
